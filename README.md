@@ -128,4 +128,5 @@ uv run uvicorn app.main:app --reload
 
 ## License
 
-MIT
+    GNU GENERAL PUBLIC LICENSE
+    Version 3, 29 June 2007

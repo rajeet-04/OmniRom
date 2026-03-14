@@ -53,20 +53,69 @@ async def _process_csv_file(text: str, style: str) -> str:
 
 
 async def _process_srt_file(text: str, style: str) -> str:
-    """Process SRT subtitle file - romanize subtitle text lines."""
-    result_lines = []
-    blocks = text.strip().split("\n\n")
+    """Process SRT subtitle file - romanize subtitle text lines.
 
-    for block in blocks:
-        lines = block.split("\n")
-        if len(lines) >= 3:
-            result_lines.append(lines[0])  # Subtitle number
-            result_lines.append(lines[1])  # Timestamp line
-            subtitle_text = " ".join(lines[2:])
-            result_lines.append(_romanize_line(subtitle_text, style))
-            result_lines.append("")
+    Handles two formats:
+    1. Standard SRT: subtitle number, timestamp, text (blank line between blocks)
+    2. Simple timestamp format: each line is [timestamp] text (no blank lines)
+    """
+    import re
+
+    # First, check if this is standard SRT format (has blank lines between blocks)
+    # Standard SRT has blocks like: "1\n[00:00:01] Text\n\n2\n[00:00:02] Text"
+    lines = text.strip().split("\n")
+
+    # Pattern to detect timestamp line: [MM:SS.mmm] or [HH:MM:SS.mmm]
+    timestamp_pattern = re.compile(r"^\[\d{1,2}:\d{2}\.\d{2,3}\]")
+
+    # Check if lines look like they start with timestamps (simple format)
+    has_timestamps = any(
+        timestamp_pattern.match(line.strip()) for line in lines if line.strip()
+    )
+
+    if not has_timestamps:
+        # Standard SRT format with blank lines
+        result_lines = []
+        blocks = text.strip().split("\n\n")
+
+        for block in blocks:
+            lines = block.split("\n")
+            if len(lines) >= 3:
+                result_lines.append(lines[0])  # Subtitle number
+                result_lines.append(lines[1])  # Timestamp line
+                subtitle_text = " ".join(lines[2:])
+                result_lines.append(_romanize_line(subtitle_text, style))
+                result_lines.append("")
+            else:
+                result_lines.append(block)
+
+        return "\n".join(result_lines)
+
+    # Simple timestamp format: each line is [timestamp] text
+    # e.g., [00:31.98] من ڈھولے
+    result_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Check if line starts with timestamp
+        match = timestamp_pattern.match(line)
+        if match:
+            # Extract timestamp and text
+            timestamp_end = match.end()
+            timestamp = line[:timestamp_end]
+            subtitle_text = line[timestamp_end:].strip()
+
+            # Romanize the subtitle text
+            if subtitle_text:
+                romanized = _romanize_line(subtitle_text, style)
+                result_lines.append(f"{timestamp} {romanized}")
+            else:
+                result_lines.append(line)
         else:
-            result_lines.append(block)
+            # Pass through non-timestamp lines as-is
+            result_lines.append(line)
 
     return "\n".join(result_lines)
 

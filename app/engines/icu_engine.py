@@ -2,17 +2,21 @@
 ICU-based romanization engine.
 
 Uses the `transliterate` library for Cyrillic and other scripts
-with rule-based transliteration. Falls back to unidecode for
-unsupported scripts.
+with rule-based transliteration.  Arabic and Urdu are handled by a
+dedicated rule-based romanizer (arabic_urdu_romanizer) that correctly
+maps aspirated consonants, diacritics, and long vowels.  Falls back
+to unidecode only as a last resort for Hebrew and unknown scripts.
 """
 
 from typing import Optional
 
+from app.engines.arabic_urdu_romanizer import romanize_arabic_urdu
+
 
 # Scripts supported by the transliterate library
 _TRANSLITERATE_LANG_MAP = {
-    "cyrillic": "ru",   # Russian/Cyrillic
-    "greek": "el",      # Greek
+    "cyrillic": "ru",  # Russian/Cyrillic
+    "greek": "el",  # Greek
 }
 
 # Additional script codes that map to transliterate languages
@@ -36,6 +40,7 @@ class ICUEngine:
         try:
             from transliterate import translit, get_available_language_codes
             from transliterate.discover import autodiscover
+
             autodiscover()
             available_codes = get_available_language_codes()
             if "ru" in available_codes or "bg" in available_codes:
@@ -45,10 +50,13 @@ class ICUEngine:
         except ImportError:
             pass
 
-        # unidecode is always available as fallback for Arabic/Hebrew
+        # Arabic/Urdu use the built-in rule-based romanizer – always available.
+        self._available_scripts.add("arabic")
+
+        # Hebrew still falls back to unidecode when available.
         try:
             from unidecode import unidecode  # noqa: F401
-            self._available_scripts.add("arabic")
+
             self._available_scripts.add("hebrew")
         except ImportError:
             pass
@@ -67,18 +75,25 @@ class ICUEngine:
         if not text:
             return ""
 
+        # Cyrillic / Greek: use the transliterate library
         if script_type in ("cyrillic", "greek"):
             lang_code = _TRANSLITERATE_LANG_MAP.get(script_type)
             if lang_code:
                 try:
                     from transliterate import translit
+
                     return translit(text, lang_code, reversed=True)
                 except Exception:
                     pass
 
-        # Fallback: use unidecode for Arabic, Hebrew, and other scripts
+        # Arabic / Urdu: use the dedicated rule-based romanizer
+        if script_type == "arabic":
+            return romanize_arabic_urdu(text)
+
+        # Hebrew and any remaining scripts: unidecode fallback
         try:
             from unidecode import unidecode
+
             return unidecode(text)
         except ImportError:
             pass
