@@ -3,18 +3,26 @@
 import io
 import os
 import csv
+import logging
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 from app.core.detector import detect_script, get_script_type
 from app.engines.router import route_romanization
-
 router = APIRouter(prefix="/v1/romanize", tags=["files"])
 
 ALLOWED_EXTENSIONS = {".txt", ".csv", ".srt"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-MAX_FILE_LINES = int(os.getenv("MAX_FILE_LINES", "200"))
+DEFAULT_MAX_FILE_LINES = 200
+try:
+    MAX_FILE_LINES = int(os.getenv("MAX_FILE_LINES", str(DEFAULT_MAX_FILE_LINES)))
+except ValueError:
+    logging.getLogger(__name__).warning(
+        "Invalid MAX_FILE_LINES value in environment; falling back to default %d",
+        DEFAULT_MAX_FILE_LINES,
+    )
+    MAX_FILE_LINES = DEFAULT_MAX_FILE_LINES
 
 
 def _romanize_line(text: str, style: str) -> str:
