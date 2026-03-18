@@ -107,6 +107,9 @@ curl -X POST http://localhost:8000/v1/romanize/batch \
 2. Render will auto-detect the `render.yaml` configuration
 3. Optionally set environment variables in Render dashboard:
    - `REDIS_URL`: Leave blank to disable caching (or add Aiven Valkey for caching)
+   - `RATE_LIMIT_REQUESTS`: Maximum number of requests allowed per client within each rate limit window (uses an internal default if unset)
+   - `RATE_LIMIT_WINDOW`: Length of the rate limit window in seconds (uses an internal default if unset)
+   - `MAX_FILE_LINES`: Maximum number of lines accepted per uploaded file before processing is rejected (uses an internal default if unset)
 
 Or manually configure:
 1. Connect your GitHub repository
@@ -118,6 +121,9 @@ Or manually configure:
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `REDIS_URL` | Aiven Valkey connection string (leave blank to disable caching) | No |
+| `RATE_LIMIT_REQUESTS` | Maximum number of requests allowed per client within each rate limit window (uses an internal default if unset) | No |
+| `RATE_LIMIT_WINDOW` | Length of the rate limit window in seconds (uses an internal default if unset) | No |
+| `MAX_FILE_LINES` | Maximum number of lines accepted per uploaded file before processing is rejected (uses an internal default if unset) | No |
 
 ## Development
 
