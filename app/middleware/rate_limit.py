@@ -86,6 +86,28 @@ def _get_rate_limiter() -> RateLimiter:
 _rate_limiter = _get_rate_limiter()
 
 
+def _get_client_ip(request: Request) -> str:
+    """Best-effort extraction of the real client IP from the request."""
+    # Prefer X-Forwarded-For (first IP is the original client)
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # The header may contain multiple comma-separated IPs
+        first_ip = x_forwarded_for.split(",")[0].strip()
+        if first_ip:
+            return first_ip
+
+    # Fallback to X-Real-IP if present
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip
+
+    # Finally, fall back to the connection's client host if available
+    if request.client:
+        return request.client.host
+
+    return "unknown"
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting middleware."""
 
@@ -95,7 +117,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Get client identifier (IP address)
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _get_client_ip(request)
 
         # Check rate limit
         if not _rate_limiter.is_allowed(client_ip):
