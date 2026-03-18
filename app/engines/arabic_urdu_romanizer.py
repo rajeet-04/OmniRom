@@ -219,6 +219,31 @@ def romanize_arabic_urdu(text: str) -> str:
             i += 2
             continue
 
+        # ── Special: مہ/مح → moh (as in محبت/mohabbat) ────────────────────────
+        # Handle both Urdu ہ (U+06C1) and Arabic ح (U+062D)
+        if ch == "\u0645" and nxt in ("\u06c1", "\u062d"):  # م + ہ or م + ح
+            j = i + 2
+            if j < n and chars[j] == "\u0628":  # followed by ب
+                result.append("moh")
+                prev_was_consonant = True
+                at_word_start = False
+                i += 2
+                continue
+            else:
+                result.append("mo")
+                prev_was_consonant = True
+                at_word_start = False
+                i += 2
+                continue
+
+        # ب + ت → abbat (geminated b with vowel, as in mohabbat)
+        if ch == "\u0628" and nxt == "\u062a":  # ب + ت
+            result.append("abbat")
+            prev_was_consonant = False
+            at_word_start = False
+            i += 2
+            continue
+
         # ── Long vowel: fatha + alef → 'aa' ─────────────────────────────────
         if ch == _FATHA and nxt == _ALEF:
             result.append("aa")
@@ -352,17 +377,15 @@ def romanize_arabic_urdu(text: str) -> str:
                 i += 2
                 continue
 
-        # دل → dil (common Urdu word for "heart")
+        # مل → mil (not mal) - common Urdu word
+        # م + ل at end of word
         if (
             ch == "\u0644"
             and nxt
-            and nxt.isspace()
-            or nxt is None
-            or nxt in "،,؟?!۔.؛;"
+            and (nxt.isspace() or nxt is None or nxt in "،,؟?!۔.؛;")
         ):
-            # ل at end of word preceded by د
-            if result and result[-1] == "d":
-                result.append("il")  # d + il = dil (not dal)
+            if result and result[-1] == "m":
+                result.append("il")
                 prev_was_consonant = False
                 at_word_start = False
                 i += 1
@@ -418,6 +441,40 @@ def romanize_arabic_urdu(text: str) -> str:
         # ── Standard character map ───────────────────────────────────────────
         if ch in _CHAR_MAP:
             mapped = _CHAR_MAP[ch]
+
+            # Insert implicit vowel between consecutive consonants
+            # Skip if previous ends with vowel OR is part of moh/mah pattern
+            if (
+                mapped
+                and _is_consonant(mapped)
+                and result
+                and _is_consonant(result[-1])
+                and not at_word_start
+            ):
+                # Skip vowel insertion after: moh (mohabbat), mah (mahaf)
+                prev = result[-1]
+                skip_vowel = (
+                    prev == "h" and len(result) >= 2 and result[-2] == "o"
+                )  # moh
+                skip_vowel = skip_vowel or (
+                    prev == "h" and len(result) >= 2 and result[-2] == "a"
+                )  # mah
+
+                if not skip_vowel:
+                    if result[-1] not in (
+                        "a",
+                        "e",
+                        "i",
+                        "o",
+                        "u",
+                        "aa",
+                        "ee",
+                        "oo",
+                        "ai",
+                        "ei",
+                    ):
+                        result.append("a")  # Insert 'a' between consonants
+
             result.append(mapped)
             if mapped:
                 prev_was_consonant = mapped[-1] not in _VOWEL_CHARS
