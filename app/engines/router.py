@@ -2,15 +2,16 @@
 Romanization router - routes input text to the best engine.
 
 Priority order:
-1. Korean (Hangul) -> KoreanEngine
-2. Japanese (Hiragana/Katakana/Kanji) -> JapaneseEngine
-3. Chinese (Han/CJK) -> ChineseEngine
-4. Indic scripts -> IndicEngine
-5. Cyrillic/Greek/Arabic/Hebrew -> ICUEngine (transliterate + unidecode)
-6. Everything else -> UromanEngine (uroman or unidecode)
+1. Google Translate (for Arabic/Urdu/Persian) - BEST romanization
+2. Korean (Hangul) -> KoreanEngine
+3. Japanese (Hiragana/Katakana/Kanji) -> JapaneseEngine
+4. Chinese (Han/CJK) -> ChineseEngine
+5. Indic scripts -> IndicEngine
+6. Cyrillic/Greek/Arabic/Hebrew -> ICUEngine (transliterate + unidecode)
+7. Everything else -> UromanEngine (uroman or unidecode)
 """
 
-from typing import Tuple
+from typing import Tuple, Optional
 
 from app.engines.icu_engine import get_icu_engine
 from app.engines.uroman_engine import get_uroman_engine
@@ -18,6 +19,8 @@ from app.engines.indic_engine import get_indic_engine
 from app.engines.chinese_engine import get_chinese_engine
 from app.engines.japanese_engine import get_japanese_engine
 from app.engines.korean_engine import get_korean_engine
+from app.engines.google_translate import translate_text as google_translate_text
+from app.engines.arabic_urdu_romanizer import romanize_arabic_urdu
 from app.core.styler import get_styler
 
 # ICU handles these script types
@@ -31,9 +34,24 @@ JAPANESE_SCRIPT_CODES = {"jpan", "hiragana", "katakana"}
 
 # Indic script codes
 INDIC_SCRIPT_CODES = {
-    "deva", "beng", "taml", "telu", "mlym", "knda",
-    "gujr", "guru", "orya", "indic",
+    "deva",
+    "beng",
+    "taml",
+    "telu",
+    "mlym",
+    "knda",
+    "gujr",
+    "guru",
+    "orya",
+    "indic",
 }
+
+# Scripts that benefit from Google Translate romanization
+# Google provides much better romanization for these scripts
+GOOGLE_TRANSLATE_SCRIPTS = {"arabic", "ur", "fa", "persian"}
+
+# Global flag to enable/disable Google Translate as primary
+_USE_GOOGLE_TRANSLATE_PRIMARY = True
 
 
 def _route_to_engine(
@@ -43,6 +61,37 @@ def _route_to_engine(
 ) -> Tuple[str, str]:
     """Route text to the appropriate engine and return (romanized, engine_name)."""
     sc = (script_code or "").lower()
+
+    # 0. Google Translate - PRIMARY for Arabic/Urdu/Persian (best romanization)
+    if _USE_GOOGLE_TRANSLATE_PRIMARY and (
+        script_type == "arabic" or sc in GOOGLE_TRANSLATE_SCRIPTS
+    ):
+        try:
+            result = google_translate_text(text, source_lang="auto", target_lang="en")
+            if result.get("romanized"):
+                # Check if it's actually romanized (Urdu in Latin) vs English translation
+                romanized_text = result["romanized"]
+                # If it contains Arabic script or looks like a translation, use fallback
+                if any(
+                    "\u0600" <= c <= "\u06ff" for c in romanized_text if c.isalpha()
+                ):
+                    # Contains Arabic script - use fallback romanizer
+                    romanized_text = romanize_arabic_urdu(text)
+                    return romanized_text, "arabic-urdu-romanizer"
+                # If it looks like English translation (common words), use fallback
+                english_indicators = ["the ", "is ", "are ", "have ", "will ", "can "]
+                if any(
+                    romanized_text.lower().startswith(w) for w in english_indicators
+                ):
+                    # Likely a translation, not romanization - use fallback
+                    romanized_text = romanize_arabic_urdu(text)
+                    return romanized_text, "arabic-urdu-romanizer"
+                return romanized_text, "google-translate"
+            # Fallback if no romanized available
+            romanized_text = romanize_arabic_urdu(text)
+            return romanized_text, "arabic-urdu-romanizer"
+        except Exception:
+            pass
 
     # 1. Korean
     if script_type == "hangul" or sc == "hangul":
@@ -129,6 +178,14 @@ def get_supported_engines() -> dict:
     """Get information about all supported engines."""
     icu = get_icu_engine()
     return {
+        "google-translate": {
+            "display_name": "Google Translate (Primary for Arabic/Urdu)",
+            "supported_scripts": list(GOOGLE_TRANSLATE_SCRIPTS),
+        },
+        "arabic-urdu-romanizer": {
+            "display_name": "Arabic/Urdu Romanizer (rule-based)",
+            "supported_scripts": ["arabic", "ur", "fa"],
+        },
         "icu": {
             "display_name": "ICU (transliterate + unidecode)",
             "supported_scripts": list(ICU_SCRIPTS),

@@ -29,6 +29,7 @@ uv run uvicorn app.main:app --reload
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/` | Welcome message |
+| `POST` | `/` | Romanize single text (main endpoint) |
 | `GET` | `/health` | Health check |
 | `POST` | `/v1/romanize` | Romanize single text |
 | `POST` | `/v1/romanize/batch` | Romanize up to 100 texts |
@@ -41,6 +42,36 @@ uv run uvicorn app.main:app --reload
 | `GET` | `/docs` | Interactive API docs (Swagger UI) |
 
 ## Examples
+
+### Root Endpoint (Main Romanization)
+
+```bash
+# Basic romanization
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Привет мир"}'
+
+# With style option
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{"text": "مرحبا بالعالم", "style": "standard"}'
+
+# Urdu lyrics romanization
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{"text": "[00:14.06] زخم دل پہ ہیں، دوا کرو", "style": "standard"}'
+```
+
+Response:
+```json
+{
+  "original": "[00:14.06] زخم دل پہ ہیں، دوا کرو",
+  "romanized": "[00:14.06] zam dal pe hai, do karo",
+  "detected_lang": "ur",
+  "detected_script": "Arabic",
+  "engine_used": "arabic-urdu-romanizer"
+}
+```
 
 ### Single Romanization
 
@@ -89,15 +120,38 @@ curl -X POST http://localhost:8000/v1/romanize/batch \
 
 | Language | Script | Engine |
 |----------|--------|--------|
+| Arabic, Urdu, Persian | Arabic | Google Translate + Arabic/Urdu Romanizer |
 | Russian, Ukrainian, Bulgarian | Cyrillic | transliterate |
 | Greek | Greek | transliterate |
-| Arabic | Arabic | unidecode |
 | Hebrew | Hebrew | unidecode |
 | Hindi | Devanagari | rule-based |
 | Chinese | Han | pypinyin |
 | Japanese | Kana/Kanji | kana-map + unidecode |
 | Korean | Hangul | unidecode |
 | Any other | Universal | unidecode |
+
+> **Note**: For Arabic/Urdu/Persian, the system first tries Google Translate for romanization. If Google returns an English translation instead of romanized text, it automatically falls back to the rule-based Arabic/Urdu Romanizer.
+
+## Testing Examples
+
+### Python
+
+```python
+import requests
+
+url = "http://localhost:8000/"
+payload = {
+    "text": "[00:14.06] زخم دل پہ ہیں، دوا کرو\n[00:16.70] آؤ، مل کے رسمِ محبت ادا کرو",
+    "style": "standard"
+}
+
+response = requests.post(url, json=payload)
+result = response.json()
+
+print(result["romanized"])
+# Output: [00:14.06] zam dal pe hai, do karo
+#         [00:16.70] aao, mil ke rasami mohabbat da karo
+```
 
 ## Deployment
 
