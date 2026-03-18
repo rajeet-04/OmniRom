@@ -1,8 +1,10 @@
 """Tests for API endpoints."""
 
 import pytest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
+import app.api.files as files_module
 from app.main import app
 
 client = TestClient(app)
@@ -178,3 +180,44 @@ class TestStatsEndpoint:
         assert "total_requests" in data
         assert "uptime_seconds" in data
         assert "cache" in data
+
+
+class TestFileEndpoint:
+    """Tests for /v1/romanize/file POST endpoint."""
+
+    def test_valid_file_romanization_succeeds(self):
+        """A small .txt file should be processed and returned with status 200."""
+        content = b"Hello\nWorld\n"
+        response = client.post(
+            "/v1/romanize/file",
+            files={"file": ("sample.txt", content, "text/plain")},
+            data={"style": "standard"},
+        )
+        assert response.status_code == 200
+
+    def test_file_exceeding_max_lines_returns_400(self):
+        """A file with more lines than MAX_FILE_LINES should return 400."""
+        max_lines = 3
+        # Build a file with max_lines + 1 lines (no trailing newline so line_count = max_lines + 1)
+        content = "\n".join(f"line {i}" for i in range(max_lines + 1))
+        with patch.object(files_module, "MAX_FILE_LINES", max_lines):
+            response = client.post(
+                "/v1/romanize/file",
+                files={"file": ("big.txt", content.encode("utf-8"), "text/plain")},
+                data={"style": "standard"},
+            )
+        assert response.status_code == 400
+        assert f"max {max_lines}" in response.json()["detail"]
+
+    def test_file_at_exactly_max_lines_succeeds(self):
+        """A file with exactly MAX_FILE_LINES lines should be accepted (boundary)."""
+        max_lines = 3
+        # Build a file with exactly max_lines lines (no trailing newline)
+        content = "\n".join(f"line {i}" for i in range(max_lines))
+        with patch.object(files_module, "MAX_FILE_LINES", max_lines):
+            response = client.post(
+                "/v1/romanize/file",
+                files={"file": ("boundary.txt", content.encode("utf-8"), "text/plain")},
+                data={"style": "standard"},
+            )
+        assert response.status_code == 200
