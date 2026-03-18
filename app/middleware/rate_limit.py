@@ -51,10 +51,31 @@ class RateLimiter:
 
 
 # Initialize rate limiter from environment
+def _get_int_env(name: str, default: int) -> int:
+    """Safely parse an integer from environment variables.
+
+    Falls back to `default` and logs a warning if the value is not a valid integer.
+    """
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid value for %s=%r; falling back to default %d",
+            name,
+            raw_value,
+            default,
+        )
+        return default
+
+
 def _get_rate_limiter() -> RateLimiter:
     """Get rate limiter instance from environment config."""
-    requests = int(os.getenv("RATE_LIMIT_REQUESTS", "0"))
-    window = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    # Defaults preserve current behavior: disabled if not explicitly > 0
+    requests = _get_int_env("RATE_LIMIT_REQUESTS", 0)
+    window = _get_int_env("RATE_LIMIT_WINDOW", 60)
 
     if requests <= 0:
         return None  # Rate limiting disabled
