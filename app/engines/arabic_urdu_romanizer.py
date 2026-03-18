@@ -140,6 +140,17 @@ _CHAR_MAP: dict[str, str] = {
 # Characters that are vowel sounds (used to track whether last output was consonant)
 _VOWEL_CHARS = frozenset("aeiouAEIOU")
 
+# Consonant characters (to detect consonant clusters for implicit vowel insertion)
+_CONSONANT_CHARS = frozenset("bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ")
+
+
+def _is_consonant(mapped: str) -> bool:
+    """Check if mapped character is a consonant."""
+    if not mapped:
+        return False
+    last_char = mapped[-1]
+    return last_char in _CONSONANT_CHARS
+
 
 def romanize_arabic_urdu(text: str) -> str:
     """
@@ -286,6 +297,76 @@ def romanize_arabic_urdu(text: str) -> str:
             at_word_start = False
             i += 1
             continue
+
+        # ── Specific Urdu word patterns ────────────────────────────────────────
+
+        # ہیں suffix (existential: hai) - must check before general ی handling
+        if ch == "\u06c1" and nxt in (_URDU_YA, _ARABIC_YA):
+            # Check for ں after ی
+            j = i + 2
+            if j < n and chars[j] == _NUN_GHUNNA:
+                result.append("hai")  # ہ + ی + ں = hai (not "hein")
+                prev_was_consonant = False
+                at_word_start = False
+                i += 3  # Skip ہ + ی + ں
+                continue
+            else:
+                # ہ + ی (without ں) = hai
+                result.append("hai")
+                prev_was_consonant = False
+                at_word_start = False
+                i += 2
+                continue
+
+        # پہ → pe (location marker "on/at")
+        if ch == "\u067e" and nxt == "\u06c1":
+            # پ + ہ = pe (not pa)
+            result.append("pe")
+            prev_was_consonant = False
+            at_word_start = False
+            i += 2
+            continue
+
+        # دوا → dua (not "do") - special case: و + ا at end of word
+        # Check if و is followed by alef with nothing after (word ends with وا)
+        if ch == _WAW and nxt == _ALEF:
+            # Check if this is word-final (nothing after alef or alef is at end)
+            j = i + 2
+            word_ends_with_waa = j >= n or chars[j].isspace()
+            if word_ends_with_waa:
+                result.append("ua")  # ua instead of o + a
+                prev_was_consonant = False
+                at_word_start = False
+                i += 2
+                continue
+
+        # زحم/زخم pattern - add 'a' between consonant clusters
+        # Handle specific common words: زخم (zakhm/zakham)
+        if ch == "\u062e" and nxt == "\u0645":
+            # خ + م - add 'a' before م if preceded by ز
+            if result and result[-1] == "z":
+                result.append("a")  # zakha + m = zakham
+                result.append("m")
+                prev_was_consonant = True
+                at_word_start = False
+                i += 2
+                continue
+
+        # دل → dil (common Urdu word for "heart")
+        if (
+            ch == "\u0644"
+            and nxt
+            and nxt.isspace()
+            or nxt is None
+            or nxt in "،,؟?!۔.؛;"
+        ):
+            # ل at end of word preceded by د
+            if result and result[-1] == "d":
+                result.append("il")  # d + il = dil (not dal)
+                prev_was_consonant = False
+                at_word_start = False
+                i += 1
+                continue
 
         # ── ی / ي before ں → diphthong 'ei' (e.g. میں → mein) ───────────────
         if ch in (_URDU_YA, _ARABIC_YA) and nxt == _NUN_GHUNNA:
