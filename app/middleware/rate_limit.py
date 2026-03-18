@@ -1,0 +1,104 @@
+"""Rate limiting middleware."""
+
+import os
+import time
+import logging
+from collections import defaultdict
+from threading import Lock
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response, JSONResponse
+
+logger = logging.getLogger("omnirom")
+
+
+class RateLimiter:
+    """Simple in-memory rate limiter using sliding window."""
+
+    def __init__(self, requests: int = 100, window_seconds: int = 60):
+        self.requests = requests
+        self.window_seconds = window_seconds
+        self.clients: dict = defaultdict(list)
+        self.lock = Lock()
+
+    def is_allowed(self, client_id: str) -> bool:
+        """Check if request is allowed for client."""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        with self.lock:
+            # Clean old requests outside the window
+            self.clients[client_id] = [
+                ts for ts in self.clients[client_id] if ts > window_start
+            ]
+
+            # Check if under limit
+            if len(self.clients[client_id]) < self.requests:
+                self.clients[client_id].append(now)
+                return True
+
+            return False
+
+    def get_remaining(self, client_id: str) -> int:
+        """Get remaining requests for client."""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        with self.lock:
+            current = len([ts for ts in self.clients[client_id] if ts > window_start])
+            return max(0, self.requests - current)
+
+
+# Initialize rate limiter from environment
+def _get_rate_limiter() -> RateLimiter:
+    """Get rate limiter instance from environment config."""
+    requests = int(os.getenv("RATE_LIMIT_REQUESTS", "0"))
+    window = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+
+    if requests <= 0:
+        return None  # Rate limiting disabled
+
+    return RateLimiter(requests=requests, window_seconds=window)
+
+
+_rate_limiter = _get_rate_limiter()
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Rate limiting middleware."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip if rate limiting is disabled
+        if _rate_limiter is None:
+            return await call_next(request)
+
+        # Get client identifier (IP address)
+        client_ip = request.client.host if request.client else "unknown"
+
+        # Check rate limit
+        if not _rate_limiter.is_allowed(client_ip):
+            logger.warning(f"Rate limit exceeded for {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Rate limit exceeded",
+                    "limit": _rate_limiter.requests,
+                    "window_seconds": _rate_limiter.window_seconds,
+                },
+            )
+
+        response = await call_next(request)
+
+        # Add rate limit headers
+        remaining = _rate_limiter.get_remaining(client_ip)
+        response.headers["X-RateLimit-Limit"] = str(_rate_limiter.requests)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Window"] = str(_rate_limiter.window_seconds)
+
+        return response
+
+
+def get_rate_limiter() -> RateLimiter:
+    """Get the rate limiter instance (for checking config)."""
+    return _rate_limiter

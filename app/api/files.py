@@ -14,6 +14,7 @@ router = APIRouter(prefix="/v1/romanize", tags=["files"])
 
 ALLOWED_EXTENSIONS = {".txt", ".csv", ".srt"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_LINES = int(os.getenv("MAX_FILE_LINES", "200"))
 
 
 def _romanize_line(text: str, style: str) -> str:
@@ -145,6 +146,14 @@ async def romanize_file(
         text = content.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Invalid UTF-8 encoding")
+
+    # Check line count limit
+    line_count = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+    if line_count > MAX_FILE_LINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File has too many lines (max {MAX_FILE_LINES})",
+        )
 
     if ext == ".txt":
         result = await _process_text_file(text, style)

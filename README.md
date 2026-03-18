@@ -101,17 +101,23 @@ curl -X POST http://localhost:8000/v1/romanize/batch \
 
 ## Deployment
 
-### Render (Free Tier)
+### Render (Free Tier) - One-Click Deploy
 
+1. Connect your GitHub repository to Render
+2. Render will auto-detect the `render.yaml` configuration
+3. Optionally set environment variables in Render dashboard:
+   - `REDIS_URL`: Leave blank to disable caching (or add Aiven Valkey for caching)
+
+Or manually configure:
 1. Connect your GitHub repository
 2. Set **Build Command**: `pip install -r requirements.txt`
-3. Set **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. Set **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 30`
 
 ### Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `REDIS_URL` | Aiven Valkey connection string | No (caching disabled without it) |
+| `REDIS_URL` | Aiven Valkey connection string (leave blank to disable caching) | No |
 
 ## Development
 
