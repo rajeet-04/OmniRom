@@ -43,8 +43,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(LoggingMiddleware)
 
 app.include_router(romanize_router)
 app.include_router(batch_router)
